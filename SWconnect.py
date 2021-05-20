@@ -5,6 +5,7 @@ This is a helper function for connecting to a SeisWare Project
 import SeisWare
 import sys 
 import pandas as pd
+import numpy as np
 
 def handle_error(message, error):
     """
@@ -14,7 +15,13 @@ def handle_error(message, error):
     print("Error: %s" % (error), file=sys.stderr)
     sys.exit(1)
 
-def SWprojlist():
+def sw_project_list():
+    '''
+    Return a list of SeisWare projects
+
+    Values will be SeisWare Project objects
+
+    '''
     connection = SeisWare.Connection()
     
     try:
@@ -29,7 +36,15 @@ def SWprojlist():
     
     return project_list
 
-def SWconnect(project_name):
+def sw_connect(project_name):
+    '''
+    project_name : String containing project name
+
+    return : login_instance object used to access data within a project
+
+    Connect to a SeisWare project
+
+    '''
     connection = SeisWare.Connection()
     
     try:
@@ -58,8 +73,15 @@ def SWconnect(project_name):
         
     return login_instance
 
-def getWell(uwi,login_instance):
+def get_well(login_instance,uwi):
     
+    '''
+    uwi : String containing well UWI
+
+    returns : SeisWare well object
+
+    '''
+
     well_list = SeisWare.WellList()
     
     try:
@@ -72,8 +94,14 @@ def getWell(uwi,login_instance):
     return wells[0]
 
 
-def getAllWells(login_instance):
+def get_all_wells(login_instance):
     
+    '''
+
+    Returns all wells in a SeisWare project as a list of well objects
+
+    '''
+
     well_list = SeisWare.WellList()
     
     try:
@@ -85,50 +113,65 @@ def getAllWells(login_instance):
     
     return wells
 
-'''
-def wellstoDF(wells):
- #Take a list of SeisWare Well Type objects and adds it to a dataframe   
-    
-    return welldf
-'''
-
-def plotLog(uwi,log_curve_name,login_instance):
- #Populate Log Curve List for given well
-    log_curve_list = SeisWare.LogCurveList()
-    
-    well = getWell(uwi,login_instance)
-    
-    try:
-        login_instance.LogCurveManager().GetAllForWell(well.ID(), log_curve_list)
-    except RuntimeError as err:
-        handle_error("Failed to get the log curves of well %s from the project" % (well.UWI()), err)
-    
-    log_curves = [log_curve for log_curve in log_curve_list if log_curve.Name() == log_curve_name]
-    
-    if not log_curves:
-        print("No log curve was found", file=sys.stderr)
-        sys.exit(1) 
-    
-    try:
-        login_instance.LogCurveManager().PopulateValues(log_curves[0])
-    except RuntimeError as err:
-        handle_error("Failed to populate the values of log curve %s of well %s from the project" % (log_curve_name, well.UWI()), err)
-
-    log_curve_values = SeisWare.DoublesList()
-    log_curves[0].Values(log_curve_values)
-    
-    return log_curve_values
 
 def get_grid(login_instance, grid_name):
 
+    '''
+    grid_name: String with grid name
+
+    returns: Dataframe containing X Y Z, where the header for Z is the Grid Name
+    
+    Get a grid and return a dataframe with X Y Z values
+    '''
+
+    # Get the grids from the project
+    grid_list = SeisWare.GridList()
+    try:
+        login_instance.GridManager().GetAll(grid_list)
+    except RuntimeError as err:
+        handle_error("Failed to get the grids from the project", err)
+
+    # Get the grid we want
+    grids = [grid for grid in grid_list if grid.Name() == grid_name]
+    
+    if not grids:
+        print("No grids were found", file=sys.stderr)
+        sys.exit(1)
+
+    # Populate the grid with it's values
+    try:
+        login_instance.GridManager().PopulateValues(grids[0])
+    except RuntimeError as err:
+        handle_error("Failed to populate the values of grid %s from the project" % (grid_name), err)
+    
+    grid = grids[0]
+
+    # Get the values from the grid
+    grid_values = SeisWare.GridValues()
+    grid.Values(grid_values)
+    #Fill a DF with X,Y,Z values
+    #Make a list of tuples
+    xyzcoords = []
+    grid_values_list = list(grid_values.Data())
+    counter = 0
+    grid_df = pd.DataFrame()
+    for i in range(grid_values.Height()):
+        for j in range(grid_values.Width()):
+            xyzcoords.append((grid.Definition().RangeY().start+i*grid.Definition().RangeY().delta,
+                            grid.Definition().RangeX().start+j*grid.Definition().RangeX().delta,
+                            grid_values_list[counter]))
+            counter = counter + 1
+            #print(counter)
+            
+    grid_df = pd.DataFrame(xyzcoords,columns=["Y","X",f"{grid.Name()}"])
 
     return grid_df
 
 
-def getsrvy(login_instance, well):
+def get_srvy(login_instance, well, depth_unit = SeisWare.Unit.Meter):
     '''
     well: SeisWare well object
-
+    depth_unit: Defaults to meter, alternatively can be SeisWare.Unit.Foot
 
     Get the directional survey based on well, login_instance.
     Return directional survey as dataframe with 
@@ -167,7 +210,7 @@ def getsrvy(login_instance, well):
     return pd.DataFrame(srvytable, columns = ['UWI','X','Y','TVDSS','MD'])
 
 
-def getlogcurve(login_instance,well,log_curve_name):
+def get_log_curve(login_instance,well,log_curve_name):
     '''
 
     Takes well object, log curve name, and login instance to return a dataframe containing
@@ -207,3 +250,70 @@ def getlogcurve(login_instance,well,log_curve_name):
 
     return pd.DataFrame(log_table,columns = ['MD',log_curve_name])
 
+def get_horizon(login_instance,seismic_name,horizon_name,proj_units = SeisWare.Unit.Meter):
+
+    '''
+    seismic_name : string containing seismic line name
+    horizon_name : string containing horizon name
+    proj_units : Coordinate system XY units. Defaults to meters. Can be changed to SeisWare.Unit.Foot
+
+    '''
+    
+    surveys = SeisWare.SeismicSurveyList()
+
+    login_instance.SeismicSurveyManager().GetAll(surveys)
+
+    survey = [i for i in surveys if i.Name() == seismic_name]
+
+    horizons = SeisWare.HorizonList()
+
+    login_instance.HorizonManager().GetAll(horizons)
+
+    horizon = [i for i in horizons if i.Name() == horizon_name]
+
+    picks = SeisWare.HorizonPicksList()
+
+    # Horizon and Survey keys must be passed in as an IDPair list. The IDPair is created and then made into a single element list
+
+    login_instance.HorizonPicksManager().GetByHorizonAndSeismicSurveyKeys([SeisWare.IDPair(horizon[0].ID(),survey[0].ID())],picks)
+
+    # Populate the pick values
+    login_instance.HorizonPicksManager().PopulateValues(picks[0])
+
+    # Create an empty constructor
+    values = SeisWare.HorizonPickValues()
+
+    # Get the values from the picks and put them into the constructor
+    picks[0].Values(values)
+
+    # Get the values from the constructor and put them into a list
+
+    horizon_points = []
+
+    #inline_range = (survey[0].Survey().InlineRange().start,survey[0].Survey().InlineRange().start+survey[0].Survey().InlineRange().count*survey[0].Survey().InlineRange().delta-1)
+    #crossline_range = (survey[0].Survey().CrosslineRange().start,survey[0].Survey().CrosslineRange().start+survey[0].Survey().CrosslineRange().count*survey[0].Survey().CrosslineRange().delta-1)
+
+    fifc = (survey[0].Survey().CornerFiFc().x.Value(proj_units),survey[0].Survey().CornerFiFc().y.Value(proj_units))
+    filc = (survey[0].Survey().CornerFiLc().x.Value(proj_units),survey[0].Survey().CornerFiLc().y.Value(proj_units))
+    lifc = (survey[0].Survey().CornerLiFc().x.Value(proj_units),survey[0].Survey().CornerLiFc().y.Value(proj_units))
+
+    delta_x_il = (lifc[0] - fifc[0])/(survey[0].Survey().CrosslineRange().count-1)
+    delta_y_il = (lifc[1] - fifc[1])/(survey[0].Survey().CrosslineRange().count-1)
+
+    delta_x_xl = (filc[0] - fifc[0])/(survey[0].Survey().InlineRange().count-1)
+    delta_y_xl = (filc[1] - fifc[1])/(survey[0].Survey().InlineRange().count-1)
+
+
+    for i in range(values.InlineCount()):
+        for j in range(values.CrosslineCount()):
+            #print(i,j)
+            if values.IsPicked(SeisWare.GridIndex2(j,i)):
+                pick_ij = values.Pick(SeisWare.GridIndex2(j,i)).structure.Value(SeisWare.Unit.Millisecond)
+            else:
+                pick_ij = np.nan
+            x = fifc[0] + i*delta_x_il + j*delta_x_xl
+            y = fifc[1] + i*delta_y_il + j*delta_y_xl
+            
+            horizon_points.append((x,y,pick_ij,i,j))
+            
+    return pd.DataFrame(horizon_points)
