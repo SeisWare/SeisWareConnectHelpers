@@ -26,7 +26,7 @@ def sw_project_list():
     
     try:
         serverInfo = SeisWare.Connection.CreateServer()
-        connection.Connect(serverInfo.Endpoint(), 5000)
+        connection.Connect(serverInfo.Endpoint(), 10000)
     except RuntimeError as err:
         handle_error("Failed to connect to the server", err)
 
@@ -340,11 +340,12 @@ def get_horizon(login_instance,seismic_name,horizon_name,proj_units = SeisWare.U
             #print(i,j)
             if values.IsPicked(SeisWare.GridIndex2(j,i)):
                 pick_ij = values.Pick(SeisWare.GridIndex2(j,i)).structure.Value(SeisWare.Unit.Millisecond)
+                pick_ij_amp = values.Pick(SeisWare.GridIndex2(j,i)).amplitude
             else:
                 pick_ij = np.nan
             x = fifc[0] + i*delta_x_il + j*delta_x_xl
             y = fifc[1] + i*delta_y_il + j*delta_y_xl
             
-            horizon_points.append((x,y,pick_ij,i,j))
+            horizon_points.append((x,y,pick_ij,pick_ij_amp,i,j))
             
     return pd.DataFrame(horizon_points)
