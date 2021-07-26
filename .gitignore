@@ -1,2 +1,7 @@
 #Workspace file
 *.code-workspace
+*__pycache__
+*.ipynb_checkpoints
+*.ipynb
+missing_log_data.py
+test.csv
