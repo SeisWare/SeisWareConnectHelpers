@@ -113,6 +113,36 @@ def get_all_wells(login_instance):
     
     return wells
 
+def get_filter_wells(login_instance,filter_name):
+    
+    '''
+    filter_name: String containing filter name
+
+    Returns filtered wells in a SeisWare project as a list of well objects
+
+    '''
+    well_filter = SeisWare.FilterList()
+
+    login_instance.FilterManager().GetAll(well_filter)
+
+    well_filter = [i for i in well_filter if i.Name() == filter_name]
+
+    keys = SeisWare.IDSet()
+
+    failed_keys = SeisWare.IDSet()
+
+    well_list = SeisWare.WellList()
+    
+    try:
+        login_instance.WellManager().GetKeysByFilter(well_filter[0],keys)
+        login_instance.WellManager().GetByKeys(keys,well_list,failed_keys)
+    except RuntimeError as err:
+        handle_error("Failed to get all the wells from the project", err)
+        
+    wells = [well for well in well_list]
+    
+    return wells
+
 
 def get_grid(login_instance, grid_name):
 
@@ -173,7 +203,8 @@ def get_srvy(login_instance, well, depth_unit = SeisWare.Unit.Meter):
     well: SeisWare well object
     depth_unit: Defaults to meter, alternatively can be SeisWare.Unit.Foot
 
-    Get the directional survey based on well, login_instance.
+    Get the directional survey based on well, login_instance. 
+    Will fail for well without Directional Survey.
     Return directional survey as dataframe with 
     columns 
     UWI X Y TVDSS MD
@@ -210,7 +241,7 @@ def get_srvy(login_instance, well, depth_unit = SeisWare.Unit.Meter):
     return pd.DataFrame(srvytable, columns = ['UWI','X','Y','TVDSS','MD'])
 
 
-def get_log_curve(login_instance,well,log_curve_name):
+def get_log_curve(login_instance,well,log_curve_name,depth_unit = SeisWare.Unit.Meter):
     '''
 
     Takes well object, log curve name, and login instance to return a dataframe containing
