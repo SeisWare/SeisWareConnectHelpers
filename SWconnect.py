@@ -337,15 +337,16 @@ def get_horizon(login_instance,seismic_name,horizon_name,proj_units = SeisWare.U
 
     for i in range(values.InlineCount()):
         for j in range(values.CrosslineCount()):
-            #print(i,j)
             if values.IsPicked(SeisWare.GridIndex2(j,i)):
                 pick_ij = values.Pick(SeisWare.GridIndex2(j,i)).structure.Value(SeisWare.Unit.Millisecond)
                 pick_ij_amp = values.Pick(SeisWare.GridIndex2(j,i)).amplitude
             else:
                 pick_ij = np.nan
+                pick_ij_amp = np.nan
             x = fifc[0] + i*delta_x_il + j*delta_x_xl
             y = fifc[1] + i*delta_y_il + j*delta_y_xl
             
             horizon_points.append((x,y,pick_ij,pick_ij_amp,i,j))
+            
             
     return pd.DataFrame(horizon_points)
